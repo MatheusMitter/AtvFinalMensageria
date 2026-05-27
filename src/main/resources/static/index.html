@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Envio de E-mails - RabbitMQ</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <h1>Sistema de Envio de E-mails</h1>
+        <p>Atividade Final - Mensageria com Java e RabbitMQ</p>
+    </header>
+
+    <main>
+        <section class="card">
+            <h2>Cadastrar destinatário</h2>
+            <form id="formDestinatario">
+                <input type="text" id="nome" placeholder="Nome" required>
+                <input type="email" id="email" placeholder="E-mail" required>
+                <button type="submit">Cadastrar</button>
+            </form>
+            <div id="msgDestinatario" class="msg"></div>
+        </section>
+
+        <section class="card">
+            <h2>Destinatários cadastrados</h2>
+            <button id="btnRecarregar">Recarregar lista</button>
+            <table id="tabelaDestinatarios">
+                <thead>
+                    <tr><th>ID</th><th>Nome</th><th>E-mail</th><th>Cadastrado em</th><th></th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </section>
+
+        <section class="card">
+            <h2>Enviar mensagem em lote</h2>
+            <form id="formEnvio">
+                <input type="text" id="assunto" placeholder="Assunto" required>
+                <textarea id="corpo" placeholder="Corpo da mensagem" rows="6" required></textarea>
+                <button type="submit">Publicar na fila</button>
+            </form>
+            <div id="msgEnvio" class="msg"></div>
+        </section>
+
+        <section class="card">
+            <h2>Logs de processamento</h2>
+            <button id="btnLogs">Atualizar logs</button>
+            <table id="tabelaLogs">
+                <thead>
+                    <tr><th>ID</th><th>Destinatário</th><th>Assunto</th><th>Status</th><th>Detalhe</th><th>Processado em</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
