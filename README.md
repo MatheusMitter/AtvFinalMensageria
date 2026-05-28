@@ -1,64 +1,72 @@
 # Atividade Final - Sistema de Envio de E-mails com Java e RabbitMQ
 
-Sistema de envio de e-mails em lote utilizando **Java + Spring Boot + RabbitMQ**, com persistência em banco e front-end web simples.
+Sistema que recebe um cadastro de destinatários e envia e-mails em lote para esse grupo de forma assíncrona. A requisição feita pelo usuário não dispara o envio diretamente: ela publica uma mensagem em uma fila do RabbitMQ, e um consumidor processa essa mensagem fora da requisição principal, fazendo o envio dos e-mails.
 
 ## Integrantes
 
 - Matheus Oliveira Mitter
 - Felipe Milhomem Rocha
 
-## Arquitetura
-
-```
-[Front-end HTML/JS] --> [REST Controller] --> [Service] --> [Producer]
-                                                                |
-                                                                v
-                                            [RabbitMQ: exchange -> routing key -> fila]
-                                                                |
-                                                                v
-                                                  [Consumer @RabbitListener]
-                                                                |
-                                                                v
-                                              [JavaMailSender / Log no console]
-                                                                |
-                                                                v
-                                                       [Banco de dados H2]
-```
-
-A requisição de envio é desacoplada do processamento real. O endpoint REST apenas publica a mensagem na fila e responde imediatamente com `202 Accepted`. Um consumidor escuta a fila e dispara os e-mails em lote, gravando logs de cada envio no banco.
-
 ## Tecnologias
 
 - Java 17
-- Spring Boot 3.3
-- Spring Web, Spring Data JPA, Spring AMQP, Spring Mail
-- RabbitMQ (local ou CloudAMQP)
-- Banco H2 (arquivo local em `./data/emaildb`)
-- HTML, CSS e JavaScript puro no front-end
+- Spring Boot 3.3 (Web, Data JPA, AMQP, Mail, Validation)
+- RabbitMQ
+- Banco H2
+- HTML, CSS e JavaScript no front-end
+
+## Arquitetura
+
+```
+Front-end  -->  Controller  -->  Service  -->  Producer
+                                                  |
+                                                  v
+                       Exchange  ->  Routing Key  ->  Fila
+                                                  |
+                                                  v
+                                      Consumer (@RabbitListener)
+                                                  |
+                                                  v
+                                  JavaMailSender / log no console
+                                                  |
+                                                  v
+                                            Banco H2
+```
+
+O `EnvioController` recebe a solicitação de envio e devolve `202 Accepted` imediatamente. O `EmailProducer` publica a mensagem em uma exchange Direct usando `RabbitTemplate`. A fila recebe a mensagem e o `EmailConsumer`, anotado com `@RabbitListener`, processa o lote, envia os e-mails e grava um registro em `envio_logs` para cada destinatário.
+
+## Recursos do RabbitMQ usados
+
+- Exchange: `email.exchange` (direct, durable)
+- Fila: `email.envio.queue` (durable)
+- Routing key: `email.envio`
+- Binding entre a exchange e a fila pela routing key
+
+Esses recursos são declarados em `RabbitConfig` e criados automaticamente ao subir a aplicação.
 
 ## Estrutura de pacotes
 
 ```
 com.atvfinal.mensageria
-├── MensageriaEmailApplication.java   # bootstrap Spring Boot
+├── MensageriaEmailApplication.java
 ├── config
-│   └── RabbitConfig.java             # exchange, fila, binding, RabbitTemplate
+│   └── RabbitConfig.java
 ├── controller
-│   ├── DestinatarioController.java   # CRUD de destinatários
-│   ├── EnvioController.java          # solicitação de envio (publica na fila)
-│   └── LogController.java            # listagem de logs de envio
+│   ├── DestinatarioController.java
+│   ├── EnvioController.java
+│   └── LogController.java
 ├── dto
-│   ├── EmailMensagemDTO.java         # payload da requisição
-│   └── EmailLoteMensagem.java        # payload publicado na fila
+│   ├── EmailLoteMensagem.java
+│   └── EmailMensagemDTO.java
 ├── exception
 │   └── GlobalExceptionHandler.java
 ├── model
 │   ├── Destinatario.java
 │   └── EnvioLog.java
 ├── producer
-│   └── EmailProducer.java            # publica na exchange usando RabbitTemplate
+│   └── EmailProducer.java
 ├── consumer
-│   └── EmailConsumer.java            # @RabbitListener -> envia e-mails
+│   └── EmailConsumer.java
 ├── repository
 │   ├── DestinatarioRepository.java
 │   └── EnvioLogRepository.java
@@ -67,109 +75,77 @@ com.atvfinal.mensageria
     └── EnvioEmailService.java
 ```
 
-## Configuração do RabbitMQ
+## Principais classes
 
-A aplicação cria automaticamente:
+- Configuração: `RabbitConfig`
+- Producer: `EmailProducer`
+- Consumer: `EmailConsumer`
+- Services: `DestinatarioService`, `EnvioEmailService`
+- Controllers: `DestinatarioController`, `EnvioController`, `LogController`
+- Entidades: `Destinatario`, `EnvioLog`
 
-- Exchange: `email.exchange` (Direct, durable)
-- Fila: `email.envio.queue` (durable)
-- Routing key: `email.envio`
+## Banco de dados
 
-### RabbitMQ local
+Persistência em H2 com arquivo local em `./data/emaildb`. Tabelas:
 
-Subir com Docker:
+- `destinatarios` — armazena nome, e-mail e data de cadastro
+- `envio_logs` — armazena destinatário, assunto, status e detalhe de cada envio processado pelo consumer
+
+Console H2: `http://localhost:8080/h2` (JDBC URL `jdbc:h2:file:./data/emaildb`, usuário `sa`, senha em branco).
+
+## Endpoints REST
+
+| Método | Endpoint                  | Descrição                                  |
+|--------|---------------------------|--------------------------------------------|
+| GET    | `/api/destinatarios`      | Lista destinatários                        |
+| POST   | `/api/destinatarios`      | Cadastra destinatário                      |
+| DELETE | `/api/destinatarios/{id}` | Remove destinatário                        |
+| POST   | `/api/envios`             | Publica solicitação de envio na fila       |
+| GET    | `/api/logs`               | Lista logs de processamento                |
+
+## Front-end
+
+Front-end servido pelo próprio Spring Boot em `http://localhost:8080`. Permite cadastrar destinatários, listar e remover, criar a mensagem (assunto e corpo), publicar a solicitação de envio na fila e visualizar os logs de processamento.
+
+## Como executar
+
+Pré-requisito: RabbitMQ acessível em `localhost:5672`. Para subir com Docker:
 
 ```bash
 docker run -d --name rabbit -p 5672:5672 -p 15672:15672 rabbitmq:3-management
 ```
 
-Painel: http://localhost:15672 (guest / guest)
+Painel do RabbitMQ: `http://localhost:15672` (usuário `guest`, senha `guest`).
 
-### CloudAMQP
-
-Definir as variáveis de ambiente antes de subir a aplicação:
-
-```bash
-export RABBITMQ_HOST=seu-host.cloudamqp.com
-export RABBITMQ_PORT=5672
-export RABBITMQ_USER=seu-usuario
-export RABBITMQ_PASS=sua-senha
-export RABBITMQ_VHOST=seu-vhost
-```
-
-## Configuração do envio de e-mails
-
-Por padrão a aplicação roda em modo `simulate=true`, gravando os envios no console e no banco sem disparar SMTP real. Para usar Mailtrap (ou outro SMTP):
-
-```bash
-export MAIL_SIMULATE=false
-export MAIL_HOST=sandbox.smtp.mailtrap.io
-export MAIL_PORT=2525
-export MAIL_USER=seu_usuario_mailtrap
-export MAIL_PASS=sua_senha_mailtrap
-export MAIL_FROM=no-reply@atvfinal.com
-```
-
-## Executando
-
-```bash
-./mvnw spring-boot:run
-```
-
-ou
+Subir a aplicação:
 
 ```bash
 mvn spring-boot:run
 ```
 
-A aplicação sobe em `http://localhost:8080`.
+Aplicação disponível em `http://localhost:8080`.
 
-- Front-end: http://localhost:8080/
-- Console H2: http://localhost:8080/h2 (JDBC URL `jdbc:h2:file:./data/emaildb`, usuário `sa`, senha em branco)
+## Envio de e-mails
 
-## Endpoints REST
+A aplicação suporta dois modos, definidos pela variável `MAIL_SIMULATE`:
 
-| Método | Endpoint                  | Descrição                                         |
-|--------|---------------------------|---------------------------------------------------|
-| GET    | `/api/destinatarios`      | Lista destinatários                               |
-| POST   | `/api/destinatarios`      | Cadastra destinatário (nome, email)               |
-| DELETE | `/api/destinatarios/{id}` | Remove destinatário                               |
-| POST   | `/api/envios`             | Publica mensagem na fila (assunto, corpo)         |
-| GET    | `/api/logs`               | Lista logs de processamento                       |
-
-### Exemplo de cadastro
-
-```bash
-curl -X POST http://localhost:8080/api/destinatarios \
-  -H "Content-Type: application/json" \
-  -d '{"nome":"Matheus","email":"matheus@example.com"}'
-```
-
-### Exemplo de envio em lote
-
-```bash
-curl -X POST http://localhost:8080/api/envios \
-  -H "Content-Type: application/json" \
-  -d '{"assunto":"Teste","corpo":"Olá! Mensagem de teste."}'
-```
-
-A resposta é imediata (`202 Accepted`). O consumidor processa o lote em background e grava os logs em `envio_logs`.
-
-## Principais classes
-
-- **Configuração**: `RabbitConfig`
-- **Producer**: `EmailProducer`
-- **Consumer**: `EmailConsumer` (`@RabbitListener`)
-- **Service**: `DestinatarioService`, `EnvioEmailService`
-- **Controller**: `DestinatarioController`, `EnvioController`, `LogController`
-- **Modelo**: `Destinatario`, `EnvioLog`
+- `MAIL_SIMULATE=true` (padrão) — o consumer registra o envio no console e em `envio_logs` sem chamar SMTP.
+- `MAIL_SIMULATE=false` — o consumer envia via SMTP usando as variáveis `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS` e `MAIL_FROM`.
 
 ## Fluxo resumido
 
-1. Usuário cadastra destinatários pelo front-end (persistidos em H2).
-2. Usuário cria a mensagem (assunto + corpo) e clica em "Publicar na fila".
-3. `EnvioController` chama `EnvioEmailService`, que monta o `EmailLoteMensagem` e chama `EmailProducer`.
-4. `EmailProducer` publica via `RabbitTemplate` na exchange `email.exchange` com routing key `email.envio`.
-5. A fila `email.envio.queue` recebe a mensagem.
-6. `EmailConsumer` (`@RabbitListener`) consome a mensagem e itera os destinatários, enviando o e-mail (real ou simulado) e gravando um `EnvioLog` para cada um.
-7. O front-end consulta `/api/logs` para visualizar o resultado do processamento.
+1. O usuário cadastra os destinatários pelo front-end e os dados são persistidos em H2.
+2. O usuário preenche assunto e corpo da mensagem e clica em "Publicar na fila".
+3. `EnvioController` recebe a requisição, `EnvioEmailService` monta um `EmailLoteMensagem` com a lista de e-mails e chama `EmailProducer`.
+4. `EmailProducer` publica a mensagem na exchange `email.exchange` com a routing key `email.envio`. A resposta volta imediatamente para o cliente.
+5. A mensagem chega à fila `email.envio.queue`.
+6. `EmailConsumer` consome a mensagem, percorre os destinatários, envia o e-mail (real ou simulado) e grava um `EnvioLog` para cada um.
+7. O front-end consulta `/api/logs` para mostrar o resultado.
+
+## Evidências
+
+Prints da execução do sistema estão em [`docs/prints/`](docs/prints/), cobrindo o front-end em uso, o console H2 com as tabelas `destinatarios` e `envio_logs`, o painel do RabbitMQ com a exchange, a fila e o binding, e os logs do Spring Boot mostrando o producer publicando e o consumer processando o lote.
+
+## Vídeo
+
+Link do vídeo demonstrativo:
