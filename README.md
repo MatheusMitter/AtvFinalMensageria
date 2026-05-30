@@ -145,7 +145,3 @@ A aplicação suporta dois modos, definidos pela variável `MAIL_SIMULATE`:
 ## Evidências
 
 Prints da execução do sistema estão em [`docs/prints/`](docs/prints/), cobrindo o front-end em uso, o console H2 com as tabelas `destinatarios` e `envio_logs`, o painel do RabbitMQ com a exchange, a fila e o binding, e os logs do Spring Boot mostrando o producer publicando e o consumer processando o lote.
-
-## Vídeo
-
-Link do vídeo demonstrativo:
